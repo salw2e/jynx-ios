@@ -13,7 +13,7 @@ targets:
   ModVoice:
     type: application
     platform: iOS
-    sources: [App]
+    sources: [App, Shared]
     dependencies:
       - target: Keyboard
     settings:
@@ -26,13 +26,14 @@ targets:
         CFBundleDisplayName: Mod Voice
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ModVoiceKey: ""
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
   Keyboard:
     type: app-extension
     platform: iOS
-    sources: [Keyboard]
+    sources: [Keyboard, Shared]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: xyz.justsal.ModVoice.Keyboard

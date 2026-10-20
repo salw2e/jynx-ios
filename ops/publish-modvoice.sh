@@ -12,16 +12,17 @@ import plistlib, sys, zipfile
 tmp, key = sys.argv[1], sys.argv[2]
 src = zipfile.ZipFile(f"{tmp}/a.zip").open("ModVoice.ipa")
 inp = zipfile.ZipFile(src)
-plist = "Payload/ModVoice.app/PlugIns/Keyboard.appex/Info.plist"
+plists = ["Payload/ModVoice.app/Info.plist", "Payload/ModVoice.app/PlugIns/Keyboard.appex/Info.plist"]
 with zipfile.ZipFile(f"{tmp}/ModVoice.ipa", "w", zipfile.ZIP_DEFLATED) as out:
     for item in inp.infolist():
         data = inp.read(item.filename)
-        if item.filename == plist:
+        if item.filename in plists:
             p = plistlib.loads(data)
             p["ModVoiceKey"] = key
             data = plistlib.dumps(p, fmt=plistlib.FMT_BINARY)
         out.writestr(item, data)
-assert plistlib.loads(zipfile.ZipFile(f"{tmp}/ModVoice.ipa").read(plist))["ModVoiceKey"] == key
+for plist in plists:
+    assert plistlib.loads(zipfile.ZipFile(f"{tmp}/ModVoice.ipa").read(plist))["ModVoiceKey"] == key
 PY
 install -m 644 "$TMP/ModVoice.ipa" /var/www/jynx-download/ModVoice.ipa.new && mv /var/www/jynx-download/ModVoice.ipa.new /var/www/jynx-download/ModVoice.ipa
 echo "published build #$2 ($3), $(stat -c %s /var/www/jynx-download/ModVoice.ipa) bytes"

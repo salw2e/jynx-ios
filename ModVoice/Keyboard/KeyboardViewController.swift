@@ -1,10 +1,11 @@
 import SwiftUI
 import UIKit
 
-enum Layer { case letters, numbers, symbols }
+enum Layer { case letters, numbers, symbols, emoji }
 enum Shift { case off, once, locked }
 
 enum BarState: Equatable {
+    case main
     case tones
     case fixing
     case done(note: String, warning: String?)
@@ -14,17 +15,32 @@ enum BarState: Equatable {
 final class KeyboardModel: ObservableObject {
     @Published var layer = Layer.letters
     @Published var shift = Shift.once
-    @Published var bar = BarState.tones
+    @Published var bar = BarState.main
     @Published var canUndo = false
     @Published var showsGlobe = true
-    @Published var tone = Tone(rawValue: UserDefaults.standard.string(forKey: "tone") ?? "") ?? .keep {
-        didSet { UserDefaults.standard.set(tone.rawValue, forKey: "tone") }
+    @Published var typed = ""
+    @Published var suggestions: [String] = []
+    @Published var correcting = false
+    @Published var customTones: [CustomTone] = {
+        guard let d = UserDefaults.standard.data(forKey: "customTones") else { return [] }
+        return (try? JSONDecoder().decode([CustomTone].self, from: d)) ?? []
+    }() {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(customTones), forKey: "customTones") }
     }
+    @Published var toneID = UserDefaults.standard.string(forKey: "tone") ?? Tone.keep.rawValue {
+        didSet { UserDefaults.standard.set(toneID, forKey: "tone") }
+    }
+
+    var custom: CustomTone? { customTones.first { $0.id == toneID } }
+    var toneLabel: String { custom?.name ?? (Tone(rawValue: toneID) ?? .keep).label }
 }
 
 final class KeyboardViewController: UIInputViewController {
     let model = KeyboardModel()
+    private let speller = Speller()
     private var undo: (original: String, fixed: String)?
+    private var pending: (word: String, fix: String)?
+    private var lastCorrection: (original: String, corrected: String, sep: String)?
     private var fixTask: Task<Void, Never>?
     private var lastShiftTap = Date.distantPast
     private var lastSpace = Date.distantPast
@@ -52,17 +68,25 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         model.showsGlobe = needsInputModeSwitchKey
-        autoShift()
+        typed()
+        guard hasFullAccess else { return }
+        Task { @MainActor in
+            if let tones = try? await Api.tones() { model.customTones = tones }
+            if model.custom == nil && Tone(rawValue: model.toneID) == nil { model.toneID = Tone.keep.rawValue }
+        }
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
         autoShift()
+        refreshSuggestions()
     }
 
     private var proxy: UITextDocumentProxy { textDocumentProxy }
 
     func type(_ key: String) {
         haptic.impactOccurred()
+        lastCorrection = nil
+        if ".,?!".contains(key) { autocorrect(before: key) }
         proxy.insertText(model.layer == .letters && model.shift != .off ? key.uppercased() : key)
         if model.shift == .once { model.shift = .off }
         typed()
@@ -70,8 +94,10 @@ final class KeyboardViewController: UIInputViewController {
 
     func space() {
         haptic.impactOccurred()
+        lastCorrection = nil
+        autocorrect(before: " ")
         let before = proxy.documentContextBeforeInput ?? ""
-        if Date().timeIntervalSince(lastSpace) < 0.4, before.hasSuffix(" "),
+        if lastCorrection == nil, Date().timeIntervalSince(lastSpace) < 0.4, before.hasSuffix(" "),
            let prev = before.dropLast().last, prev.isLetter || prev.isNumber {
             proxy.deleteBackward()
             proxy.insertText(". ")
@@ -80,19 +106,55 @@ final class KeyboardViewController: UIInputViewController {
             proxy.insertText(" ")
             lastSpace = Date()
         }
-        model.layer = .letters
+        if model.layer != .emoji { model.layer = .letters }
         typed()
     }
 
     func newline() {
         haptic.impactOccurred()
+        lastCorrection = nil
+        autocorrect(before: "\n")
         proxy.insertText("\n")
         typed()
     }
 
     func delete() {
         haptic.impactOccurred()
-        proxy.deleteBackward()
+        let before = proxy.documentContextBeforeInput ?? ""
+        if let c = lastCorrection, before.hasSuffix(c.corrected + c.sep) {
+            replace((c.corrected + c.sep).count, with: c.original)
+            speller.learn(c.original)
+        } else {
+            proxy.deleteBackward()
+        }
+        lastCorrection = nil
+        typed()
+    }
+
+    func emoji(_ e: String) {
+        haptic.impactOccurred()
+        lastCorrection = nil
+        proxy.insertText(e)
+        Emoji.used(e)
+        typed()
+    }
+
+    func pick(_ suggestion: String) {
+        haptic.impactOccurred()
+        guard !model.typed.isEmpty else { return }
+        replace(model.typed.count, with: suggestion + " ")
+        lastCorrection = nil
+        pending = nil
+        typed()
+    }
+
+    func keepTyped() {
+        haptic.impactOccurred()
+        guard !model.typed.isEmpty else { return }
+        if model.correcting { speller.learn(model.typed) }
+        pending = nil
+        lastCorrection = nil
+        proxy.insertText(" ")
         typed()
     }
 
@@ -110,30 +172,76 @@ final class KeyboardViewController: UIInputViewController {
     func setLayer(_ layer: Layer) {
         haptic.impactOccurred()
         model.layer = layer
+        refreshSuggestions()
     }
 
     func nextKeyboard() {
         advanceToNextInputMode()
     }
 
+    func openTones() {
+        model.bar = .tones
+    }
+
+    func chooseTone(_ id: String) {
+        model.toneID = id
+        model.bar = .main
+    }
+
+    func closeBar() {
+        model.bar = .main
+    }
+
     private func typed() {
         if model.bar != .fixing {
-            model.bar = .tones
+            model.bar = .main
             undo = nil
             model.canUndo = false
         }
         autoShift()
+        refreshSuggestions()
     }
 
     private func autoShift() {
         guard model.shift != .locked else { return }
         let before = proxy.documentContextBeforeInput ?? ""
-        let start = before.isEmpty || before.hasSuffix("\n") || [". ", "! ", "? "].contains { before.hasSuffix($0) }
-        model.shift = start ? .once : .off
+        model.shift = atSentenceStart(Substring(before)) ? .once : .off
     }
 
-    func closeBar() {
-        model.bar = .tones
+    private func atSentenceStart(_ s: Substring) -> Bool {
+        s.isEmpty || s.hasSuffix("\n") || [". ", "! ", "? "].contains { s.hasSuffix($0) }
+    }
+
+    private func currentWord() -> (word: String, sentenceStart: Bool)? {
+        let before = proxy.documentContextBeforeInput ?? ""
+        let word = String(before.reversed().prefix { $0.isLetter || $0 == "'" }.reversed())
+        guard !word.isEmpty else { return nil }
+        let rest = before.dropLast(word.count)
+        if let p = rest.last, !(p.isWhitespace || "(\"".contains(p)) { return nil }
+        return (word, atSentenceStart(rest))
+    }
+
+    private func refreshSuggestions() {
+        guard model.layer != .emoji, let cur = currentWord() else {
+            model.typed = ""
+            model.suggestions = []
+            model.correcting = false
+            pending = nil
+            return
+        }
+        let word = cur.word
+        let fix = speller.correction(for: word, sentenceStart: cur.sentenceStart)
+        model.typed = word
+        model.suggestions = speller.suggestions(for: word, correction: fix)
+        model.correcting = fix != nil
+        pending = fix.map { (word, $0) }
+    }
+
+    private func autocorrect(before sep: String) {
+        guard let p = pending, let word = currentWord()?.word, word == p.word else { return }
+        replace(word.count, with: p.fix)
+        lastCorrection = (word, p.fix, sep)
+        pending = nil
     }
 
     func fix() {
@@ -159,7 +267,7 @@ final class KeyboardViewController: UIInputViewController {
             }
             model.bar = .fixing
             do {
-                let r = try await Fixer.fix(original, tone: model.tone)
+                let r = try await Api.fix(original, tone: Tone(rawValue: model.toneID) ?? .keep, custom: model.custom)
                 guard !Task.isCancelled else { return }
                 guard proxy.documentContextBeforeInput == original else {
                     model.bar = .error("Your message changed while fixing. Tap Fix again.")
@@ -167,10 +275,12 @@ final class KeyboardViewController: UIInputViewController {
                 }
                 replace(original.count, with: r.fixed)
                 undo = (original, r.fixed)
+                lastCorrection = nil
+                refreshSuggestions()
                 model.canUndo = true
                 model.bar = .done(note: r.changes.first ?? "Fixed.", warning: r.heads_up)
             } catch {
-                model.bar = .error((error as? FixError)?.message ?? "The fixer had a problem. Try again.")
+                model.bar = .error((error as? ApiError)?.message ?? "The fixer had a problem. Try again.")
             }
         }
     }
@@ -181,8 +291,9 @@ final class KeyboardViewController: UIInputViewController {
         }
         undo = nil
         model.canUndo = false
-        model.bar = .tones
+        model.bar = .main
         autoShift()
+        refreshSuggestions()
     }
 
     private func replace(_ count: Int, with text: String) {
