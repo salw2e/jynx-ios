@@ -4,11 +4,14 @@ import SwiftUI
 struct ModVoiceApp: App {
     var body: some Scene {
         WindowGroup {
-            if ProcessInfo.processInfo.arguments.contains("-harness") {
-                HarnessScreen()
-            } else {
-                SetupView()
+            Group {
+                if ProcessInfo.processInfo.arguments.contains("-harness") {
+                    HarnessScreen()
+                } else {
+                    SetupView()
+                }
             }
+            .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-dark") ? .dark : nil)
         }
     }
 }
@@ -45,6 +48,7 @@ final class HarnessTextView: UITextView {
     private lazy var keyboard: KeyboardViewController = {
         let kb = KeyboardViewController()
         kb.model.customTones = [sampleTone]
+        if ProcessInfo.processInfo.arguments.contains("-dark") { kb.overrideUserInterfaceStyle = .dark }
         return kb
     }()
 

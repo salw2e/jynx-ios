@@ -5,7 +5,6 @@ final class ModVoiceUITests: XCTestCase {
 
     override func setUp() {
         continueAfterFailure = false
-        XCUIDevice.shared.appearance = .light
     }
 
     func testSetupScreen() {
@@ -19,9 +18,6 @@ final class ModVoiceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Chill"].waitForExistence(timeout: 5))
         shot("02 tone editor")
         app.buttons["Cancel"].tap()
-        XCUIDevice.shared.appearance = .dark
-        Thread.sleep(forTimeInterval: 1.5)
-        shot("03 app dark")
     }
 
     func testKeyboard() {
@@ -88,13 +84,30 @@ final class ModVoiceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["bar-message"].waitForExistence(timeout: 30))
         shot("16 fix message")
         app.buttons["close-bar"].tap()
+    }
 
-        XCUIDevice.shared.appearance = .dark
-        Thread.sleep(forTimeInterval: 1.5)
+    func testDark() {
+        app.launchArguments = ["-uitest", "-dark"]
+        app.launch()
+        XCTAssertTrue(app.buttons["tone-row"].firstMatch.waitForExistence(timeout: 10))
+        shot("03 app dark")
+        app.terminate()
+
+        app.launchArguments = ["-uitest", "-harness", "-dark"]
+        app.launch()
+        let field = app.textViews["harness"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        XCTAssertTrue(key("q").waitForExistence(timeout: 5))
         type("hey")
         shot("17 dark")
         key("emoji").tap()
+        XCTAssertTrue(app.buttons["😂"].waitForExistence(timeout: 3))
         shot("18 emoji dark")
+        key("letters").tap()
+        app.buttons["tone-button"].tap()
+        XCTAssertTrue(app.buttons["Firm"].waitForExistence(timeout: 3))
+        shot("19 tones dark")
     }
 
     private func key(_ name: String) -> XCUIElement {
