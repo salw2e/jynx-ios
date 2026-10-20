@@ -1,0 +1,32 @@
+name: modvoice
+on:
+  push:
+    branches: [main]
+    paths: ["ModVoice/**", ".github/workflows/modvoice.yml"]
+  workflow_dispatch: {}
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults: { run: { working-directory: ModVoice } }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+      - name: Archive (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project ModVoice.xcodeproj -scheme ModVoice -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/ModVoice.xcarchive \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" archive 2>&1 | tee build-log.txt | grep -E "error:|warning: .*Swift|ARCHIVE" || true
+          test -d build/ModVoice.xcarchive/Products/Applications/ModVoice.app/PlugIns/Keyboard.appex
+      - name: Package ipa
+        run: |
+          mkdir -p build/Payload && cp -R build/ModVoice.xcarchive/Products/Applications/ModVoice.app build/Payload/
+          cd build && zip -qry ModVoice.ipa Payload && ls -la ModVoice.ipa
+      - uses: actions/upload-artifact@v4
+        with: { name: ModVoice-ipa, path: ModVoice/build/ModVoice.ipa, retention-days: 30 }
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: modvoice-logs, path: "ModVoice/*-log.txt", retention-days: 7 }
