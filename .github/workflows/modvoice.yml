@@ -13,6 +13,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: Generate project
         run: brew install xcodegen && xcodegen generate
+      - name: UI test in the simulator
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in d if ".iOS-" in k), key=lambda k: [int(x) for x in k.split(".iOS-")[1].split("-")])
+          phones = [x for x in d[ios[-1]] if x["name"].startswith("iPhone") and "Pro" in x["name"] and "Max" not in x["name"]] or [x for x in d[ios[-1]] if x["name"].startswith("iPhone")]
+          print(phones[0]["udid"]); print(phones[0]["name"], ios[-1], file=sys.stderr)')
+          xcodebuild test -project ModVoice.xcodeproj -scheme ModVoice -destination "id=$UDID" -resultBundlePath build/ui.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test-log.txt | grep -E "error:|Test Case|TEST (SUCCEEDED|FAILED)|XCTAssert" || true
+          grep -q "TEST SUCCEEDED" test-log.txt
+      - name: Screenshots
+        if: always()
+        run: xcrun xcresulttool export attachments --path build/ui.xcresult --output-path build/shots || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: modvoice-screenshots, path: ModVoice/build/shots, retention-days: 14, if-no-files-found: ignore }
       - name: Archive (unsigned)
         run: |
           set -o pipefail

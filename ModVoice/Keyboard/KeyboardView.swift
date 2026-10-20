@@ -7,16 +7,18 @@ struct KeyboardView: View {
     var body: some View {
         VStack(spacing: 0) {
             Bar(model: model, kb: kb)
-                .frame(height: 46)
+                .frame(height: model.metrics.bar)
             Group {
                 if model.layer == .emoji {
-                    EmojiPanel(kb: kb)
+                    EmojiPanel(model: model, kb: kb)
                 } else {
                     Keys(model: model, kb: kb)
                 }
             }
+            .frame(height: model.metrics.area)
             .padding(.horizontal, 3)
-            .padding(.bottom, 4)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
         }
     }
 }
@@ -40,10 +42,20 @@ private struct Bar: View {
                     .background(Capsule().fill(Color.primary.opacity(0.08)))
                     .foregroundStyle(Color.primary)
                 }
-                .frame(maxWidth: 104, alignment: .leading)
+                .frame(maxWidth: 110, alignment: .leading)
                 .padding(.leading, 6)
+                .accessibilityIdentifier("tone-button")
                 Suggestions(model: model, kb: kb)
-                FixButton(kb: kb)
+                Button(action: kb.fix) {
+                    Text("Fix")
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(Color.accentColor))
+                        .foregroundStyle(.white)
+                }
+                .padding(.trailing, 6)
+                .accessibilityIdentifier("fix")
             case .tones:
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -53,33 +65,42 @@ private struct Bar: View {
                         ForEach(model.customTones) { t in
                             Chip(label: t.name, on: model.toneID == t.id) { kb.chooseTone(t.id) }
                         }
+                        Divider().frame(height: 22)
+                        Chip(label: model.autocorrect ? "Autocorrect on" : "Autocorrect off", on: false, action: kb.toggleAutocorrect)
+                            .accessibilityIdentifier("autocorrect")
                     }
                     .padding(.leading, 8)
+                    .padding(.trailing, 4)
                 }
                 CloseButton(kb: kb)
             case .fixing:
-                ProgressView().padding(.leading, 12)
+                ProgressView().padding(.leading, 14)
                 Text("Fixing…").font(.subheadline).foregroundStyle(.secondary)
                 Spacer()
             case let .done(note, warning):
                 Image(systemName: warning == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(warning == nil ? Color.green : Color.orange)
-                    .padding(.leading, 12)
+                    .padding(.leading, 14)
                 Text(warning ?? note)
                     .font(.footnote)
                     .foregroundStyle(warning == nil ? Color.secondary : Color.orange)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                 Spacer(minLength: 4)
                 if model.canUndo {
-                    Button("Undo", action: kb.undoFix).font(.subheadline.bold())
+                    Button("Undo", action: kb.undoFix).font(.subheadline.bold()).accessibilityIdentifier("undo")
                 }
                 CloseButton(kb: kb)
             case let .error(message):
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(Color.orange)
+                    .padding(.leading, 14)
                 Text(message)
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.primary)
                     .lineLimit(2)
-                    .padding(.leading, 12)
+                    .minimumScaleFactor(0.85)
+                    .accessibilityIdentifier("bar-message")
                 Spacer(minLength: 4)
                 CloseButton(kb: kb)
             }
@@ -93,9 +114,7 @@ private struct Suggestions: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if model.typed.isEmpty {
-                Spacer()
-            } else {
+            if !model.typed.isEmpty {
                 slot(model.correcting ? "“\(model.typed)”" : model.typed, bold: false, action: kb.keepTyped)
                 ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
                     Divider().frame(height: 22)
@@ -119,22 +138,6 @@ private struct Suggestions: View {
     }
 }
 
-private struct FixButton: View {
-    let kb: KeyboardViewController
-
-    var body: some View {
-        Button(action: kb.fix) {
-            Text("Fix")
-                .font(.subheadline.bold())
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(Color.accentColor))
-                .foregroundStyle(.white)
-        }
-        .padding(.trailing, 6)
-    }
-}
-
 private struct Chip: View {
     let label: String
     let on: Bool
@@ -143,6 +146,7 @@ private struct Chip: View {
     var body: some View {
         Button(label, action: action)
             .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(Capsule().fill(on ? Color.accentColor : Color.primary.opacity(0.08)))
@@ -159,12 +163,9 @@ private struct CloseButton: View {
         }
         .foregroundStyle(.secondary)
         .padding(.trailing, 4)
+        .accessibilityIdentifier("close-bar")
     }
 }
-
-private let keyHeight: CGFloat = 43
-private let keyGap: CGFloat = 6
-private let areaHeight = keyHeight * 4 + 30
 
 private struct Keys: View {
     @ObservedObject var model: KeyboardModel
@@ -179,129 +180,200 @@ private struct Keys: View {
     }
 
     var body: some View {
+        let m = model.metrics
         GeometryReader { geo in
             let u = geo.size.width / 10
-            VStack(spacing: 10) {
-                row(rows[0], width: u - keyGap)
-                row(rows[1], width: u - keyGap)
-                HStack(spacing: keyGap) {
+            VStack(spacing: m.gap) {
+                row(rows[0], width: u - 6)
+                row(rows[1], width: u - 6)
+                HStack(spacing: 6) {
                     thirdRowLeft.frame(width: u * 1.3)
                     if model.layer == .letters {
                         Spacer(minLength: 0)
-                        row(rows[2], width: u - keyGap)
+                        row(rows[2], width: u - 6)
                         Spacer(minLength: 0)
                     } else {
                         ForEach(Array(rows[2]), id: \.self) { c in
-                            charKey(String(c)).frame(maxWidth: .infinity)
+                            charKey(String(c), edge: 0).frame(maxWidth: .infinity)
                         }
                     }
                     DeleteKey(kb: kb).frame(width: u * 1.3)
                 }
-                .frame(height: keyHeight)
-                .zIndex(1)
-                HStack(spacing: keyGap) {
-                    Button(model.layer == .letters ? "123" : "ABC") {
-                        kb.setLayer(model.layer == .letters ? .numbers : .letters)
+                .frame(height: m.key)
+                HStack(spacing: 6) {
+                    Key(kb, special: true, id: "key-layer", label: model.layer == .letters ? "numbers" : "letters", onDown: true,
+                        action: { kb.setLayer(model.layer == .letters ? .numbers : .letters) }) {
+                        Text(model.layer == .letters ? "123" : "ABC").font(.system(size: 16))
                     }
-                    .buttonStyle(KeyStyle(special: true))
                     .frame(width: u * 1.3)
-                    Button { kb.setLayer(.emoji) } label: { Image(systemName: "face.smiling") }
-                        .buttonStyle(KeyStyle(special: true))
-                        .frame(width: u * 1.1)
-                    if model.showsGlobe {
-                        Button(action: kb.nextKeyboard) { Image(systemName: "globe") }
-                            .buttonStyle(KeyStyle(special: true))
-                            .frame(width: u * 1.1)
+                    Key(kb, special: true, id: "key-emoji", label: "emoji", onDown: true, action: { kb.setLayer(.emoji) }) {
+                        Image(systemName: "face.smiling").font(.system(size: 19))
                     }
-                    Button("space", action: kb.space).buttonStyle(KeyStyle())
-                    Button("return", action: kb.newline)
-                        .buttonStyle(KeyStyle(special: true))
-                        .frame(width: u * 2.1)
+                    .frame(width: u * 1.1)
+                    if model.showsGlobe {
+                        Key(kb, special: true, id: "key-globe", label: "next keyboard", action: kb.nextKeyboard) {
+                            Image(systemName: "globe").font(.system(size: 19))
+                        }
+                        .frame(width: u * 1.1)
+                    }
+                    SpaceKey(kb: kb)
+                    Key(kb, special: model.returnLabel == "return", accent: model.returnLabel != "return",
+                        id: "key-return", label: model.returnLabel, action: kb.newline) {
+                        Text(model.returnLabel).font(.system(size: 16))
+                    }
+                    .frame(width: u * 2.1)
                 }
-                .frame(height: keyHeight)
+                .frame(height: m.key)
             }
-            .font(.system(size: 16))
         }
-        .frame(height: areaHeight)
-        .padding(.top, 4)
     }
 
     private func row(_ keys: String, width: CGFloat) -> some View {
-        HStack(spacing: keyGap) {
-            ForEach(Array(keys), id: \.self) { c in
-                charKey(String(c)).frame(width: width)
+        let chars = Array(keys)
+        return HStack(spacing: 6) {
+            ForEach(chars.indices, id: \.self) { i in
+                charKey(String(chars[i]), edge: i == 0 ? 1 : i == chars.count - 1 ? -1 : 0).frame(width: width)
             }
         }
-        .frame(height: keyHeight)
+        .frame(height: model.metrics.key)
     }
 
-    private func charKey(_ c: String) -> some View {
+    private func charKey(_ c: String, edge: CGFloat) -> some View {
         let shown = model.layer == .letters && model.shift != .off ? c.uppercased() : c
-        return Button { kb.type(c) } label: {
-            Text(shown).font(.system(size: 22))
+        return Key(kb, id: "key-\(c)", label: shown, popup: shown, popupShift: edge * 9, action: { kb.type(c) }) {
+            Text(shown).font(.system(size: model.compact ? 19 : 22))
         }
-        .buttonStyle(CharKeyStyle(popup: shown))
     }
 
     @ViewBuilder private var thirdRowLeft: some View {
         switch model.layer {
         case .letters, .emoji:
-            Button(action: kb.tapShift) {
+            Key(kb, special: model.shift == .off, id: "key-shift", label: "shift", onDown: true, action: kb.tapShift) {
                 Image(systemName: model.shift == .locked ? "capslock.fill" : model.shift == .once ? "shift.fill" : "shift")
+                    .font(.system(size: 18))
             }
-            .buttonStyle(KeyStyle(special: model.shift == .off))
         case .numbers:
-            Button("#+=") { kb.setLayer(.symbols) }.buttonStyle(KeyStyle(special: true))
+            Key(kb, special: true, id: "key-symbols", label: "more symbols", onDown: true, action: { kb.setLayer(.symbols) }) {
+                Text("#+=").font(.system(size: 16))
+            }
         case .symbols:
-            Button("123") { kb.setLayer(.numbers) }.buttonStyle(KeyStyle(special: true))
+            Key(kb, special: true, id: "key-numbers", label: "numbers", onDown: true, action: { kb.setLayer(.numbers) }) {
+                Text("123").font(.system(size: 16))
+            }
         }
     }
 }
 
-private struct EmojiPanel: View {
+private struct Key<Content: View>: View {
     let kb: KeyboardViewController
-    @State private var recent = Emoji.recent
+    let special: Bool
+    let accent: Bool
+    let ident: String
+    let label: String
+    let popup: String?
+    let popupShift: CGFloat
+    let onDown: Bool
+    let action: () -> Void
+    let content: Content
+    @State private var down = false
+    @State private var token = UUID()
 
-    private let grid = Array(repeating: GridItem(.fixed(38), spacing: 4), count: 5)
-
-    var body: some View {
-        VStack(spacing: 6) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHGrid(rows: grid, alignment: .top, spacing: 4, pinnedViews: [.sectionHeaders]) {
-                    if !recent.isEmpty { section("Recent", recent) }
-                    ForEach(Emoji.groups, id: \.name) { g in section(g.name, g.list) }
-                }
-                .padding(.horizontal, 4)
-            }
-            HStack(spacing: keyGap) {
-                Button("ABC") { kb.setLayer(.letters) }
-                    .buttonStyle(KeyStyle(special: true))
-                    .frame(width: 70)
-                Button("space", action: kb.space).buttonStyle(KeyStyle())
-                DeleteKey(kb: kb).frame(width: 60)
-            }
-            .frame(height: keyHeight)
-        }
-        .frame(height: areaHeight)
-        .padding(.top, 4)
-        .onAppear { recent = Emoji.recent }
+    init(_ kb: KeyboardViewController, special: Bool = false, accent: Bool = false, id: String, label: String,
+         popup: String? = nil, popupShift: CGFloat = 0, onDown: Bool = false,
+         action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.kb = kb
+        self.special = special
+        self.accent = accent
+        self.ident = id
+        self.label = label
+        self.popup = popup
+        self.popupShift = popupShift
+        self.onDown = onDown
+        self.action = action
+        self.content = content()
     }
 
-    private func section(_ name: String, _ list: [String]) -> some View {
-        Section {
-            ForEach(Array(list.enumerated()), id: \.offset) { _, e in
-                Button { kb.emoji(e) } label: {
-                    Text(e).font(.system(size: 30)).frame(width: 40, height: 38)
+    var body: some View {
+        content
+            .foregroundStyle(accent ? Color.white : Color.primary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(KeyFill(special: popup == nil && down ? !special : special, accent: accent))
+            .overlay(alignment: .bottom) {
+                if down, let popup {
+                    Text(popup)
+                        .font(.system(size: 34))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 52, height: 58)
+                        .background(KeyFill(special: false))
+                        .offset(x: popupShift, y: -kb.model.metrics.key + 2)
+                        .allowsHitTesting(false)
                 }
             }
-        } header: {
-            Text(name.uppercased())
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .fixedSize()
-                .rotationEffect(.degrees(-90))
-                .frame(width: 14)
-        }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard !down else { return }
+                        down = true
+                        if onDown { kb.pressNow(action) } else { kb.press(token, action) }
+                    }
+                    .onEnded { _ in
+                        down = false
+                        if !onDown { kb.release(token) }
+                    }
+            )
+            .accessibilityElement()
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(ident)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { kb.pressNow(action) }
+    }
+}
+
+private struct SpaceKey: View {
+    let kb: KeyboardViewController
+    @State private var down = false
+    @State private var moving = false
+    @State private var anchor: CGFloat = 0
+    @State private var token = UUID()
+
+    var body: some View {
+        Text("space")
+            .font(.system(size: 16))
+            .foregroundStyle(moving ? Color.secondary : Color.primary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(KeyFill(special: down && !moving))
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { g in
+                        if !down {
+                            down = true
+                            anchor = g.location.x
+                            kb.press(token, kb.space)
+                        }
+                        let dx = g.location.x - anchor
+                        if !moving, abs(dx) > 14 {
+                            moving = true
+                            kb.cancel(token)
+                            anchor = g.location.x
+                        } else if moving, abs(dx) >= 9 {
+                            let steps = Int(dx / 9)
+                            kb.moveCursor(steps)
+                            anchor += CGFloat(steps) * 9
+                        }
+                    }
+                    .onEnded { _ in
+                        if !moving { kb.release(token) }
+                        down = false
+                        moving = false
+                    }
+            )
+            .accessibilityElement()
+            .accessibilityLabel("space")
+            .accessibilityIdentifier("key-space")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { kb.pressNow(kb.space) }
     }
 }
 
@@ -312,6 +384,8 @@ private struct DeleteKey: View {
 
     var body: some View {
         Image(systemName: down ? "delete.left.fill" : "delete.left")
+            .font(.system(size: 18))
+            .foregroundStyle(Color.primary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(KeyFill(special: !down))
             .contentShape(Rectangle())
@@ -320,64 +394,89 @@ private struct DeleteKey: View {
                     .onChanged { _ in
                         guard !down else { return }
                         down = true
-                        kb.delete()
+                        kb.pressNow(kb.delete)
                         timer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { _ in
-                            timer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in kb.delete() }
+                            timer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in kb.pressNow(kb.delete) }
                         }
                     }
-                    .onEnded { _ in
-                        down = false
-                        timer?.invalidate()
-                        timer = nil
-                    }
+                    .onEnded { _ in stop() }
             )
+            .onDisappear(perform: stop)
+            .accessibilityElement()
+            .accessibilityLabel("delete")
+            .accessibilityIdentifier("key-delete")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { kb.pressNow(kb.delete) }
+    }
+
+    private func stop() {
+        down = false
+        timer?.invalidate()
+        timer = nil
     }
 }
 
-private struct KeyStyle: ButtonStyle {
-    var special = false
+private struct EmojiPanel: View {
+    @ObservedObject var model: KeyboardModel
+    let kb: KeyboardViewController
+    @State private var recent = Emoji.recent
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(Color.primary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(KeyFill(special: configuration.isPressed ? !special : special))
-            .contentShape(Rectangle())
+    private var groups: [(name: String, icon: String, list: [String])] {
+        (recent.isEmpty ? [] : [("Recent", "clock", recent)]) + Emoji.groups
     }
-}
 
-private struct CharKeyStyle: ButtonStyle {
-    let popup: String
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(Color.primary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(KeyFill(special: false))
-            .contentShape(Rectangle())
-            .overlay(alignment: .bottom) {
-                if configuration.isPressed {
-                    Text(popup)
-                        .font(.system(size: 34))
-                        .foregroundStyle(Color.primary)
-                        .frame(width: 50, height: 58)
-                        .background(KeyFill(special: false))
-                        .offset(y: -keyHeight + 4)
-                        .allowsHitTesting(false)
+    var body: some View {
+        let m = model.metrics
+        let gridHeight = m.area - m.key - 6
+        let cell = (gridHeight - 3 * 2) / 4
+        ScrollViewReader { reader in
+            VStack(spacing: 6) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHGrid(rows: Array(repeating: GridItem(.fixed(cell), spacing: 2), count: 4), spacing: 2) {
+                        ForEach(groups, id: \.name) { g in
+                            ForEach(g.list.indices, id: \.self) { i in
+                                Button { kb.emoji(g.list[i]) } label: {
+                                    Text(g.list[i]).font(.system(size: cell * 0.8)).frame(width: cell + 4, height: cell)
+                                }
+                                .id("\(g.name)-\(i)")
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 4)
                 }
+                .frame(height: gridHeight)
+                HStack(spacing: 6) {
+                    Key(kb, special: true, id: "key-letters", label: "letters", onDown: true, action: { kb.setLayer(.letters) }) {
+                        Text("ABC").font(.system(size: 16))
+                    }
+                    .frame(width: 58)
+                    ForEach(groups, id: \.name) { g in
+                        Button {
+                            withAnimation { reader.scrollTo("\(g.name)-0", anchor: .leading) }
+                        } label: {
+                            Image(systemName: g.icon).font(.system(size: 15)).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(g.name)
+                    }
+                    DeleteKey(kb: kb).frame(width: 52)
+                }
+                .frame(height: m.key)
             }
-            .zIndex(configuration.isPressed ? 1 : 0)
+        }
+        .onAppear { recent = Emoji.recent }
     }
 }
 
 private struct KeyFill: View {
     var special: Bool
+    var accent = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         RoundedRectangle(cornerRadius: 5)
-            .fill(scheme == .dark
-                  ? (special ? Color(white: 0.27) : Color(white: 0.42))
+            .fill(accent ? Color.accentColor
+                  : scheme == .dark ? (special ? Color(white: 0.27) : Color(white: 0.42))
                   : (special ? Color(red: 0.68, green: 0.70, blue: 0.74) : Color.white))
             .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
     }

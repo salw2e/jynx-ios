@@ -13,7 +13,11 @@ targets:
   ModVoice:
     type: application
     platform: iOS
-    sources: [App, Shared]
+    sources:
+      - App
+      - Shared
+      - path: Keyboard
+        excludes: ["Info.plist"]
     dependencies:
       - target: Keyboard
     settings:
@@ -52,3 +56,19 @@ targets:
             PrefersRightToLeft: false
             PrimaryLanguage: en-US
             RequestsOpenAccess: true
+  ModVoiceUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: ModVoice
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: xyz.justsal.ModVoiceUITests
+schemes:
+  ModVoice:
+    build:
+      targets:
+        ModVoice: all
+    test:
+      targets: [ModVoiceUITests]

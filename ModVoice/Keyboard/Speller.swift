@@ -35,9 +35,14 @@ final class Speller {
         if learned.contains(lower) || Self.slang.contains(lower) { return nil }
         if word.first?.isUppercase == true && !sentenceStart && lower != "i" { return nil }
         if word.dropFirst().contains(where: \.isUppercase) { return nil }
-        if let f = Self.fixes[lower] { return f == lower ? nil : matchCase(f, like: word) }
-        guard word.count >= 3, misspelled(word), let g = guesses(word).first else { return nil }
-        return distance(lower, g.lowercased()) <= (word.count >= 7 ? 2 : 1) ? matchCase(g, like: word) : nil
+        if let f = Self.fixes[lower] {
+            let r = matchCase(f, like: word)
+            return r == word ? nil : r
+        }
+        guard word.count >= 3, misspelled(word), let g = guesses(word).first,
+              distance(lower, g.lowercased()) <= (word.count >= 7 ? 2 : 1) else { return nil }
+        let r = matchCase(g, like: word)
+        return r == word ? nil : r
     }
 
     func suggestions(for word: String, correction: String?) -> [String] {

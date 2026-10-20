@@ -3,8 +3,52 @@ import SwiftUI
 @main
 struct ModVoiceApp: App {
     var body: some Scene {
-        WindowGroup { SetupView() }
+        WindowGroup {
+            if ProcessInfo.processInfo.arguments.contains("-harness") {
+                HarnessScreen()
+            } else {
+                SetupView()
+            }
+        }
     }
+}
+
+let uiTest = ProcessInfo.processInfo.arguments.contains("-uitest")
+let sampleTone = CustomTone(id: "sample", name: "Chill", how: "Short and chill, like I'm talking to friends. A bit funny, never rude.")
+
+struct HarnessScreen: View {
+    var body: some View {
+        VStack {
+            HarnessField()
+                .frame(height: 160)
+                .padding()
+            Spacer()
+        }
+    }
+}
+
+struct HarnessField: UIViewRepresentable {
+    func makeUIView(context: Context) -> HarnessTextView {
+        let v = HarnessTextView()
+        v.font = .systemFont(ofSize: 20)
+        v.layer.borderColor = UIColor.separator.cgColor
+        v.layer.borderWidth = 1
+        v.layer.cornerRadius = 8
+        v.accessibilityIdentifier = "harness"
+        return v
+    }
+
+    func updateUIView(_ view: HarnessTextView, context: Context) {}
+}
+
+final class HarnessTextView: UITextView {
+    private lazy var keyboard: KeyboardViewController = {
+        let kb = KeyboardViewController()
+        kb.model.customTones = [sampleTone]
+        return kb
+    }()
+
+    override var inputViewController: UIInputViewController? { keyboard }
 }
 
 @MainActor
@@ -13,6 +57,10 @@ final class ToneList: ObservableObject {
     @Published var status = ""
 
     func load() async {
+        if uiTest {
+            tones = [sampleTone]
+            return
+        }
         do {
             tones = try await Api.tones()
             status = ""
