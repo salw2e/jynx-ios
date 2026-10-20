@@ -11,9 +11,11 @@ final class ModVoiceUITests: XCTestCase {
     func testSetupScreen() {
         app.launchArguments = ["-uitest"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["Chill"].waitForExistence(timeout: 10))
+        let row = app.buttons["tone-row"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        XCTAssertTrue(row.label.hasPrefix("Chill"), row.label)
         shot("01 app")
-        app.staticTexts["Chill"].tap()
+        row.tap()
         XCTAssertTrue(app.navigationBars["Chill"].waitForExistence(timeout: 5))
         shot("02 tone editor")
         app.buttons["Cancel"].tap()

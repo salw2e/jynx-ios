@@ -108,7 +108,9 @@ struct SetupView: View {
                         }
                         .contentShape(Rectangle())
                         .onTapGesture { editing = tone }
+                        .accessibilityElement(children: .combine)
                         .accessibilityAddTraits(.isButton)
+                        .accessibilityIdentifier("tone-row")
                     }
                     .onDelete { rows in
                         list.tones.remove(atOffsets: rows)

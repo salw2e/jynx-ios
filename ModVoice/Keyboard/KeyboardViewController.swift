@@ -66,9 +66,8 @@ final class KeyboardViewController: UIInputViewController {
     private var lastSpace = Date.distantPast
 
     override func loadView() {
-        let v = ClickInputView(frame: CGRect(x: 0, y: 0, width: 0, height: model.metrics.total), inputViewStyle: .keyboard)
-        v.allowsSelfSizing = true
-        view = v
+        view = ClickInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: model.metrics.total),
+                              inputViewStyle: .keyboard)
     }
 
     override func viewDidLoad() {
