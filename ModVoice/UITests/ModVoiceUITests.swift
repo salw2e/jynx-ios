@@ -18,6 +18,7 @@ final class ModVoiceUITests: XCTestCase {
         shot("02 tone editor")
         app.buttons["Cancel"].tap()
         XCUIDevice.shared.appearance = .dark
+        Thread.sleep(forTimeInterval: 1.5)
         shot("03 app dark")
     }
 
@@ -87,6 +88,7 @@ final class ModVoiceUITests: XCTestCase {
         app.buttons["close-bar"].tap()
 
         XCUIDevice.shared.appearance = .dark
+        Thread.sleep(forTimeInterval: 1.5)
         type("hey")
         shot("17 dark")
         key("emoji").tap()

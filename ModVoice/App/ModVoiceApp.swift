@@ -98,12 +98,17 @@ struct SetupView: View {
                 }
                 Section {
                     ForEach(list.tones) { tone in
-                        Button { editing = tone } label: {
+                        HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(tone.name).foregroundStyle(.primary)
+                                Text(tone.name)
                                 Text(tone.how).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
                             }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                         }
+                        .contentShape(Rectangle())
+                        .onTapGesture { editing = tone }
+                        .accessibilityAddTraits(.isButton)
                     }
                     .onDelete { rows in
                         list.tones.remove(atOffsets: rows)

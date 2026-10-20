@@ -7,7 +7,7 @@ on:
 jobs:
   ipa:
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults: { run: { working-directory: ModVoice } }
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,7 @@ jobs:
           phones = [x for x in d[ios[-1]] if x["name"].startswith("iPhone") and "Pro" in x["name"] and "Max" not in x["name"]] or [x for x in d[ios[-1]] if x["name"].startswith("iPhone")]
           print(phones[0]["udid"]); print(phones[0]["name"], ios[-1], file=sys.stderr)')
           xcodebuild test -project ModVoice.xcodeproj -scheme ModVoice -destination "id=$UDID" -resultBundlePath build/ui.xcresult \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 240 -maximum-test-execution-time-allowance 300 \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee test-log.txt | grep -E "error:|Test Case|TEST (SUCCEEDED|FAILED)|XCTAssert" || true
           grep -q "TEST SUCCEEDED" test-log.txt
       - name: Screenshots
