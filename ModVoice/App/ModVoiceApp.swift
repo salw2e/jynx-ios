@@ -48,6 +48,8 @@ final class HarnessTextView: UITextView {
     private lazy var keyboard: KeyboardViewController = {
         let kb = KeyboardViewController()
         kb.model.customTones = [sampleTone]
+        kb.model.autocorrect = true   // the UI test exercises the correction path; users get it off by default
+
         if ProcessInfo.processInfo.arguments.contains("-dark") { kb.overrideUserInterfaceStyle = .dark }
         return kb
     }()

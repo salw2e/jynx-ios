@@ -39,7 +39,7 @@ final class Speller {
             let r = matchCase(f, like: word)
             return r == word ? nil : r
         }
-        guard word.count >= 4, misspelled(word), let g = guesses(word).first,
+        guard word.count >= 3, misspelled(word), let g = guesses(word).first,
               distance(lower, g.lowercased()) <= (word.count >= 7 ? 2 : 1) else { return nil }
         // Never turn a lowercase word into a capitalised proper noun: "than" was becoming "Tina".
         if g.first?.isUppercase == true && word.first?.isUppercase != true { return nil }
