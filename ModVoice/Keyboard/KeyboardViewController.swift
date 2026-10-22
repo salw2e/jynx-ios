@@ -31,7 +31,9 @@ final class KeyboardModel: ObservableObject {
     @Published var typed = ""
     @Published var suggestions: [String] = []
     @Published var correcting = false
-    @Published var autocorrect = UserDefaults.standard.object(forKey: "autocorrect") as? Bool ?? true {
+    // Off by default: this speller doesn't know slang, names or Khmer-romanised words, so auto-replacing while typing
+    // changed words the user meant ("anh", "hg", "kdmv"...). The Autocorrect chip in the tone bar turns it on.
+    @Published var autocorrect = UserDefaults.standard.object(forKey: "autocorrect") as? Bool ?? false {
         didSet { UserDefaults.standard.set(autocorrect, forKey: "autocorrect") }
     }
     @Published var customTones: [CustomTone] = {
