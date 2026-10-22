@@ -301,14 +301,16 @@ private struct Key<Content: View>: View {
             .overlay(alignment: .bottom) {
                 if down, let popup {
                     Text(popup)
-                        .font(.system(size: 34))
+                        .font(.system(size: 30))
                         .foregroundStyle(Color.primary)
-                        .frame(width: 52, height: 58)
+                        .frame(width: kb.model.metrics.key * 1.18, height: kb.model.metrics.key * 1.3)
                         .background(KeyFill(special: false))
-                        .offset(x: popupShift, y: -kb.model.metrics.key + 2)
+                        .offset(x: popupShift, y: -kb.model.metrics.key - 5)
                         .allowsHitTesting(false)
+                        .transition(.scale(scale: 0.35, anchor: .bottom).combined(with: .opacity))
                 }
             }
+            .animation(.easeOut(duration: 0.07), value: down)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
