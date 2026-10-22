@@ -66,6 +66,7 @@ final class KeyboardViewController: UIInputViewController {
     private var fixTask: Task<Void, Never>?
     private var lastShiftTap = Date.distantPast
     private var lastSpace = Date.distantPast
+    private var guessWork: DispatchWorkItem?
     private let haptic = UIImpactFeedbackGenerator(style: .light)
 
     // The standard keyboard click plus a light tap, fired the moment a key goes down. The click only sounds when the
@@ -302,7 +303,8 @@ final class KeyboardViewController: UIInputViewController {
     private func autoShift() {
         guard model.shift != .locked else { return }
         let before = proxy.documentContextBeforeInput ?? ""
-        model.shift = atSentenceStart(Substring(before)) ? .once : .off
+        let s: Shift = atSentenceStart(Substring(before)) ? .once : .off
+        if model.shift != s { model.shift = s }   // don't churn @Published (and the key grid) when unchanged
     }
 
     private func atSentenceStart(_ s: Substring) -> Bool {
@@ -319,6 +321,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func refreshSuggestions() {
+        guessWork?.cancel()
         guard model.layer != .emoji, let cur = currentWord() else {
             model.typed = ""
             model.suggestions = []
@@ -326,17 +329,29 @@ final class KeyboardViewController: UIInputViewController {
             pending = nil
             return
         }
+        model.typed = cur.word   // the word itself is cheap; show it right away
+        // UITextChecker (guesses/completions) costs tens of ms. Running it on every keystroke blocks the main thread,
+        // so fast taps land on a stalled thread and get dropped. The suggestion slots are cosmetic, so defer the
+        // checker until typing pauses; a burst keeps cancelling and rescheduling it, and it never runs mid-burst.
+        let work = DispatchWorkItem { [weak self] in self?.computeGuesses(cur) }
+        guessWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+    }
+
+    private func computeGuesses(_ cur: (word: String, sentenceStart: Bool)) {
+        guard currentWord()?.word == cur.word else { return }   // word moved on; drop this stale result
         let fix = model.autocorrect ? speller.correction(for: cur.word, sentenceStart: cur.sentenceStart) : nil
-        model.typed = cur.word
         model.suggestions = speller.suggestions(for: cur.word, correction: fix)
         model.correcting = fix != nil
         pending = fix.map { (cur.word, $0) }
     }
 
     private func autocorrect(before sep: String) {
-        guard let p = pending, let word = currentWord()?.word, word == p.word else { return }
-        replace(word.count, with: p.fix)
-        lastCorrection = (word, p.fix, sep)
+        // Compute the fix on the spot: the per-keystroke guess is debounced and may not have run yet.
+        guard model.autocorrect, let cur = currentWord(),
+              let fix = speller.correction(for: cur.word, sentenceStart: cur.sentenceStart) else { return }
+        replace(cur.word.count, with: fix)
+        lastCorrection = (cur.word, fix, sep)
         pending = nil
     }
 

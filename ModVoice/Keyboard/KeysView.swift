@@ -27,7 +27,7 @@ final class KeysView: UIView {
     func beginTouch() { active += 1 }
     func endTouch() {
         active = max(0, active - 1)
-        if active == 0, pendingRebuild { pendingRebuild = false; rebuild(); setNeedsLayout() }
+        if active == 0, pendingRebuild { pendingRebuild = false; rebuild() }
     }
 
     init(kb: KeyboardViewController) {
@@ -36,6 +36,7 @@ final class KeysView: UIView {
         isMultipleTouchEnabled = true
         backgroundColor = .clear
         rebuild()
+        applyShift()
         // Observe the model directly: SwiftUI does not call updateUIView when the model changes (this view's value
         // doesn't depend on it), so a layer or shift change has to drive the rebuild from here.
         bag = model.objectWillChange.sink { [weak self] _ in
@@ -44,18 +45,24 @@ final class KeysView: UIView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Called by SwiftUI whenever the model changes. Rebuilds only when the keys themselves differ (layer, shift case,
-    /// return label, compact), never on every keystroke.
+    private var structure: String { "\(model.layer)-\(model.returnLabel)-\(model.showsGlobe)-\(model.compact)" }
+
+    /// Rebuilds only when the set of keys differs (layer, return label, globe, compact). Shift flips at every sentence
+    /// start, and tearing the grid down for it left a moment with no keys under the finger, so case is updated in place.
     func sync() {
-        let sig = "\(model.layer)-\(model.shift)-\(model.returnLabel)-\(model.showsGlobe)-\(model.compact)"
-        guard sig != signature else { return }
-        if active > 0 { pendingRebuild = true; return }
-        rebuild()
-        setNeedsLayout()
+        if structure != signature {
+            if active > 0 { pendingRebuild = true } else { rebuild() }
+        }
+        applyShift()
+    }
+
+    private func applyShift() {
+        let up = model.layer == .letters && model.shift != .off
+        rows.forEach { $0.forEach { $0.applyShift(up: up, shift: model.shift) } }
     }
 
     private func rebuild() {
-        signature = "\(model.layer)-\(model.shift)-\(model.returnLabel)-\(model.showsGlobe)-\(model.compact)"
+        signature = structure
         rows.forEach { $0.forEach { $0.removeFromSuperview() } }
         rows = layout().map { row in
             row.map { desc in
@@ -65,6 +72,9 @@ final class KeysView: UIView {
                 return b
             }
         }
+        // Lay the new keys out now; left to the next pass they sit at zero size and a tap in between hits nothing.
+        setNeedsLayout()
+        layoutIfNeeded()
     }
 
     override func layoutSubviews() {
@@ -171,11 +181,13 @@ final class KeyButton: UIView {
     private var repeatTimer: Timer?
     private var spaceAnchor: CGFloat = 0
     private var spaceMoved = false
-    private var pressed = false
+    private var held = 0              // fingers on this key; a second can land before the first lifts
+    private var special: Bool
 
     init(kb: KeyboardViewController, desc: KeyDesc) {
         self.kb = kb
         self.desc = desc
+        self.special = desc.special
         super.init(frame: .zero)
         isMultipleTouchEnabled = true
 
@@ -222,9 +234,9 @@ final class KeyButton: UIView {
         if desc.accent {
             capColor = UIColor(named: "AccentColor") ?? .systemBlue
         } else if dark {
-            capColor = desc.special ? UIColor(white: 0.27, alpha: 1) : UIColor(white: 0.42, alpha: 1)
+            capColor = special ? UIColor(white: 0.27, alpha: 1) : UIColor(white: 0.42, alpha: 1)
         } else {
-            capColor = desc.special ? UIColor(red: 0.68, green: 0.70, blue: 0.74, alpha: 1) : .white
+            capColor = special ? UIColor(red: 0.68, green: 0.70, blue: 0.74, alpha: 1) : .white
         }
         cap.backgroundColor = capColor
         let fg: UIColor = desc.accent ? .white : .label
@@ -241,18 +253,37 @@ final class KeyButton: UIView {
 
     private var model: KeyboardModel { kb.model }
 
+    func applyShift(up: Bool, shift: Shift) {
+        switch desc.kind {
+        case .char:
+            title.text = up ? desc.label.uppercased() : desc.label
+        case .shift:
+            glyph.image = UIImage(systemName: shift == .locked ? "capslock.fill" : shift == .once ? "shift.fill" : "shift")
+            if special != (shift == .off) {
+                special = shift == .off
+                if held == 0 { restyle() }
+            }
+        default: break
+        }
+    }
+
     // MARK: touches — all commit on DOWN (except space, which may be a cursor slide, and so acts on up).
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard !pressed else { return }
-        pressed = true
-        grid?.beginTouch()
+        let fresh = held == 0
+        held += touches.count
+        touches.forEach { _ in grid?.beginTouch() }
+        if case let .char(c) = desc.kind {
+            // Every finger that lands types, even if another is still on this key ("ll" with two thumbs).
+            touches.forEach { _ in kb.click(); kb.type(c) }
+            showPopup()
+            return
+        }
+        guard fresh else { return }
         setDown(true)
         switch desc.kind {
-        case let .char(c):
-            kb.click()
-            kb.type(c)
-            showPopup()
+        case .char:
+            break
         case .shift:
             kb.click(); kb.tapShift()
         case let .go(layer):
@@ -290,18 +321,20 @@ final class KeyButton: UIView {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if case .space = desc.kind, !spaceMoved { kb.click(); kb.space() }
-        finish()
+        if case .space = desc.kind, !spaceMoved, held - touches.count == 0 { kb.click(); kb.space() }
+        finish(touches.count)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        finish()
+        finish(touches.count)
     }
 
-    private func finish() {
-        guard pressed else { return }
-        pressed = false
-        grid?.endTouch()
+    private func finish(_ n: Int) {
+        guard held > 0 else { return }
+        let lifted = min(n, held)
+        held -= lifted
+        for _ in 0..<lifted { grid?.endTouch() }
+        guard held == 0 else { return }
         setDown(false)
         hidePopup()
         repeatTimer?.invalidate()
@@ -310,7 +343,7 @@ final class KeyButton: UIView {
 
     private func setDown(_ down: Bool) {
         // Special keys darken while held, like the stock keyboard; char keys don't (only the popup shows).
-        guard desc.special, !desc.accent else { return }
+        guard special, !desc.accent else { return }
         let dark = traitCollection.userInterfaceStyle == .dark
         if down {
             cap.backgroundColor = dark ? UIColor(white: 0.42, alpha: 1) : .white
@@ -322,7 +355,8 @@ final class KeyButton: UIView {
     // MARK: popup — the letter balloon that pops up out of the key, like iOS.
 
     private func showPopup() {
-        guard desc.popup, let text = desc.display else { return }
+        guard desc.popup, let text = title.text else { return }
+        hidePopup()
         let w = bounds.width * 1.2, h = bounds.height * 1.35
         // Positioned in the grid's coordinates (the popup is added to the superview so it can sit above the key).
         let cx = frame.minX + cap.frame.midX
@@ -344,14 +378,14 @@ final class KeyButton: UIView {
         p.addSubview(l)
         superview?.addSubview(p)   // added to the grid so it can overflow above the key
         popup = p
-        p.transform = CGAffineTransform(scaleX: 0.4, y: 0.4)
-        p.alpha = 0
-        UIView.animate(withDuration: 0.07) { p.transform = .identity; p.alpha = 1 }
+        // Full size at once, like iOS: a grow-in animation never finished on a quick tap, so nothing showed.
     }
 
     private func hidePopup() {
-        popup?.removeFromSuperview()
+        // Hold it a beat after release so a fast tap still flashes the letter.
+        let p = popup
         popup = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { p?.removeFromSuperview() }
     }
 
     // The UI test drives keys through accessibility, not raw touch. Route that to the same actions.
