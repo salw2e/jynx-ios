@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UIKit
 
@@ -19,6 +20,7 @@ final class KeysView: UIView {
     private var signature = ""
     private var active = 0            // keys currently held
     private var pendingRebuild = false
+    private var bag: AnyCancellable?
 
     // A held key (delete-repeat, space-slide) must not be yanked out from under the finger by a rebuild, so defer any
     // rebuild until every finger is up.
@@ -34,6 +36,11 @@ final class KeysView: UIView {
         isMultipleTouchEnabled = true
         backgroundColor = .clear
         rebuild()
+        // Observe the model directly: SwiftUI does not call updateUIView when the model changes (this view's value
+        // doesn't depend on it), so a layer or shift change has to drive the rebuild from here.
+        bag = model.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.sync() }
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
