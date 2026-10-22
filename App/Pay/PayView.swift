@@ -208,7 +208,7 @@ private struct AutoQRPanel: View {
                 case .waiting:
                     if let link = qr.deeplink.flatMap(URL.init(string:)) {
                         Button { openURL(link) } label: {
-                            Text(kind == .khqr ? "Open my bank app" : "Open ABA Mobile").font(.open(17, .heavy)).foregroundStyle(.black)
+                            Text(link.scheme == "abamobilebank" ? "Pay in ABA" : kind == .khqr ? "Open my bank app" : "Open ABA Mobile").font(.open(17, .heavy)).foregroundStyle(.black)
                                 .frame(width: 220, height: 50).background(.white, in: Capsule())
                         }
                     }
