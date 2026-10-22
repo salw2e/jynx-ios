@@ -70,7 +70,7 @@ final class KeyboardViewController: UIInputViewController {
 
     // The standard keyboard click plus a light tap, fired the moment a key goes down. The click only sounds when the
     // user has Keyboard Clicks on (same as the system keyboard); the haptic is subtle, like the stock keys.
-    private func click() {
+    func click() {
         UIDevice.current.playInputClick()
         haptic.impactOccurred(intensity: 0.6)
     }

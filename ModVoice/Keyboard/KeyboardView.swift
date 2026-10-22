@@ -12,7 +12,7 @@ struct KeyboardView: View {
                 if model.layer == .emoji {
                     EmojiPanel(model: model, kb: kb)
                 } else {
-                    Keys(model: model, kb: kb)
+                    UIKitKeys(kb: kb)
                 }
             }
             .frame(height: model.metrics.area)
