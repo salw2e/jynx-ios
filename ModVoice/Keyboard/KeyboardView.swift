@@ -244,7 +244,9 @@ private struct Keys: View {
 
     private func charKey(_ c: String, edge: CGFloat) -> some View {
         let shown = model.layer == .letters && model.shift != .off ? c.uppercased() : c
-        return Key(kb, id: "key-\(c)", label: shown, popup: shown, popupShift: edge * 9, action: { kb.type(c) }) {
+        // onDown: commit the letter the instant it is pressed, in touch order. Committing on release let a fast
+        // "to" land as "ot" when the next key went down before the first lifted.
+        return Key(kb, id: "key-\(c)", label: shown, popup: shown, popupShift: edge * 9, onDown: true, action: { kb.type(c) }) {
             Text(shown).font(.system(size: model.compact ? 19 : 22))
         }
     }
@@ -315,7 +317,7 @@ private struct Key<Content: View>: View {
                 }
             }
             .animation(.easeOut(duration: 0.07), value: down)
-            .contentShape(Rectangle())
+            .contentShape(Rectangle().inset(by: -3))  // tap zone reaches into the gaps, so an off-centre tap still lands
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in

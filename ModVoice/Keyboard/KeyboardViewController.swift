@@ -64,6 +64,14 @@ final class KeyboardViewController: UIInputViewController {
     private var fixTask: Task<Void, Never>?
     private var lastShiftTap = Date.distantPast
     private var lastSpace = Date.distantPast
+    private let haptic = UIImpactFeedbackGenerator(style: .light)
+
+    // The standard keyboard click plus a light tap, fired the moment a key goes down. The click only sounds when the
+    // user has Keyboard Clicks on (same as the system keyboard); the haptic is subtle, like the stock keys.
+    private func click() {
+        UIDevice.current.playInputClick()
+        haptic.impactOccurred(intensity: 0.6)
+    }
 
     override func loadView() {
         view = ClickInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: model.metrics.total),
@@ -103,6 +111,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        haptic.prepare()
         model.showsGlobe = needsInputModeSwitchKey
         model.bar = .main
         model.layer = .letters
@@ -129,7 +138,7 @@ final class KeyboardViewController: UIInputViewController {
         let earlier = held
         held = [(id, fire)]
         earlier.forEach { $0.fire() }
-        UIDevice.current.playInputClick()
+        click()
     }
 
     func release(_ id: UUID) {
@@ -145,7 +154,7 @@ final class KeyboardViewController: UIInputViewController {
         let earlier = held
         held = []
         earlier.forEach { $0.fire() }
-        UIDevice.current.playInputClick()
+        click()
         action()
     }
 
@@ -201,7 +210,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     func emoji(_ e: String) {
-        UIDevice.current.playInputClick()
+        click()
         lastCorrection = nil
         proxy.insertText(e)
         Emoji.used(e)
@@ -209,7 +218,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     func pick(_ suggestion: String) {
-        UIDevice.current.playInputClick()
+        click()
         guard !model.typed.isEmpty else { return }
         replace(model.typed.count, with: suggestion + " ")
         lastCorrection = nil
@@ -218,7 +227,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     func keepTyped() {
-        UIDevice.current.playInputClick()
+        click()
         guard !model.typed.isEmpty else { return }
         if model.correcting { speller.learn(model.typed) }
         pending = nil
