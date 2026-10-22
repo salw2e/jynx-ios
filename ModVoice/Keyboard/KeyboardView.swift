@@ -219,9 +219,13 @@ private struct Keys: View {
                     SpaceKey(kb: kb)
                     Key(kb, special: model.returnLabel == "return", accent: model.returnLabel != "return",
                         id: "key-return", label: model.returnLabel, action: kb.newline) {
-                        Text(model.returnLabel).font(.system(size: 16))
+                        if model.returnLabel == "return" {
+                            Image(systemName: "return").font(.system(size: 18))
+                        } else {
+                            Text(model.returnLabel).font(.system(size: 16))
+                        }
                     }
-                    .frame(width: u * 2.1)
+                    .frame(width: u * (model.returnLabel == "return" ? 1.5 : 2.0))
                 }
                 .frame(height: m.key)
             }
